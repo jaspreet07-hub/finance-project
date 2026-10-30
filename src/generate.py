@@ -56,7 +56,8 @@ for emp in employers.itertuples():
         if kind == "DUPLICATE_ROW":
             df = pd.concat([df, df.iloc[[i]]], ignore_index=True)
         elif kind == "UNKNOWN_MEMBER":
-            df.iloc[i, df.columns.get_loc("member_id")] = "M99999"
+            unknown_id = f"M{90000 + len(truth):05d}"
+            df.iloc[i, df.columns.get_loc("member_id")] = unknown_id
         elif kind == "INVALID_AMOUNT":
             df.iloc[i, df.columns.get_loc("employee_amount")] = -100
         elif kind == "ABOVE_LIMIT":
@@ -66,7 +67,7 @@ for emp in employers.itertuples():
 
         truth.append({
             "file": f"{emp.employer_id}_2026-09.csv",
-            "member_id": "M99999" if kind == "UNKNOWN_MEMBER" else member_before,
+            "member_id": unknown_id if kind == "UNKNOWN_MEMBER" else member_before,
             "rule_name": kind,
         })
 
