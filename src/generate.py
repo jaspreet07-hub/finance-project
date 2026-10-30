@@ -30,8 +30,8 @@ period = date(2026, 9, 1)   # contribution month
 truth = []
 
 for emp in employers.itertuples():
-    # contributions for September are due in October, on the employer's due day
     due = date(2026, 10, emp.due_day)
+    col = lambda name: df.columns.get_loc(name)
 
     rows = []
     active = members[(members.employer_id == emp.employer_id) & (members.status == "ACTIVE")]
@@ -46,28 +46,52 @@ for emp in employers.itertuples():
         })
     df = pd.DataFrame(rows)
 
-    # inject labelled errors into about 4% of rows
-    n_errors = max(1, len(df) // 25)
+    used_left = set()
+    n_errors = max(1, len(df) // 12)
     for i in random.sample(range(len(df)), n_errors):
         kind = random.choice(["DUPLICATE_ROW", "UNKNOWN_MEMBER", "INVALID_AMOUNT",
-                              "ABOVE_LIMIT", "LATE_SUBMISSION"])
-        member_before = df.iloc[i]["member_id"]
+                              "ABOVE_LIMIT", "LATE_SUBMISSION",
+                              "LEFT_MEMBER", "EMPLOYER_MISMATCH", "MALFORMED_FIELD"])
+        flagged_member = df.iloc[i]["member_id"]
 
         if kind == "DUPLICATE_ROW":
             df = pd.concat([df, df.iloc[[i]]], ignore_index=True)
         elif kind == "UNKNOWN_MEMBER":
-            unknown_id = f"M{90000 + len(truth):05d}"
-            df.iloc[i, df.columns.get_loc("member_id")] = unknown_id
+            flagged_member = f"M{90000 + len(truth):05d}"      # unique fake ID
+            df.iloc[i, col("member_id")] = flagged_member
         elif kind == "INVALID_AMOUNT":
-            df.iloc[i, df.columns.get_loc("employee_amount")] = -100
+            df.iloc[i, col("employee_amount")] = -100
         elif kind == "ABOVE_LIMIT":
-            df.iloc[i, df.columns.get_loc("employer_amount")] *= 5
+            df.iloc[i, col("employer_amount")] *= 5
         elif kind == "LATE_SUBMISSION":
-            df.iloc[i, df.columns.get_loc("received_date")] = (due + timedelta(days=12)).isoformat()
+            df.iloc[i, col("received_date")] = (due + timedelta(days=12)).isoformat()
+        elif kind == "LEFT_MEMBER":
+            left = members[(members.employer_id == emp.employer_id)
+                           & (members.status == "LEFT")
+                           & (~members.member_id.isin(used_left))]
+            if left.empty:
+                continue                                       # nothing injected, nothing logged
+            lm = left.iloc[0]
+            used_left.add(lm.member_id)
+            flagged_member = lm.member_id
+            df = pd.concat([df, pd.DataFrame([{
+                "member_id": lm.member_id,
+                "employer_id": emp.employer_id,
+                "period_month": period.isoformat(),
+                "employee_amount": round(lm.monthly_salary * 0.10, 2),
+                "employer_amount": round(lm.monthly_salary * 0.10, 2),
+                "received_date": (due - timedelta(days=1)).isoformat(),
+            }])], ignore_index=True)
+        elif kind == "EMPLOYER_MISMATCH":
+            others = [e for e in employers.employer_id if e != emp.employer_id]
+            df.iloc[i, col("employer_id")] = random.choice(others)
+            df.iloc[i, col("received_date")] = "2026-10-01"    # early, so it can't also trip the late rule
+        elif kind == "MALFORMED_FIELD":
+            df.iloc[i, col("received_date")] = "31/13/2026"
 
         truth.append({
             "file": f"{emp.employer_id}_2026-09.csv",
-            "member_id": unknown_id if kind == "UNKNOWN_MEMBER" else member_before,
+            "member_id": flagged_member,
             "rule_name": kind,
         })
 
