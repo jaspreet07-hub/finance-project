@@ -13,7 +13,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("pipeline")
 
-STEPS = ["generate", "ingest", "validate", "load"]
+STEPS = ["generate", "ingest", "validate", "load", "report"]
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = 5
 
